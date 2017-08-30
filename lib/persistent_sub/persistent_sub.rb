@@ -6,8 +6,15 @@ module PersistentSub #:nodoc:
 	end
   end
 
-  class Event
+  def self.publish channel, data
+  	event = Event.new(data)
+  	self.dispatch(channel, event)
+  end
 
+  class Event
+  end
+
+  class Subscription
   end
 
   def self.dispatch channel, event
@@ -17,20 +24,27 @@ module PersistentSub #:nodoc:
 	end
   end
 
-  def self.deliver subscription, event
-  	klass = subscription.target_type.constantize
+  def self.deliver sub, event
+  	target = self.find_target(sub)
 
-  	if subscription.target_id.present?
-  	  target = klass.find(subscription.target_id)
-  	else
-  	  target = klass
-  	end
-
-  	target.send(subscription.method, event)
+  	target.send(sub.method, event)
   rescue => e
   	if autoclean
-  	  subscription.destroy
+  	  sub.destroy
   	end
+  end
+
+  def find_target sub
+    target = sub.target_type.safe_constantize
+    raise "Class #{sub.target_type} not found" unless target
+
+    if sub.target_id.present?
+      target = target.find_by_id(sub.target_id)
+      raise "Record #{sub.target_type} with [#{sub.target_id}] not found" unless target
+    end
+
+    raise "Method #{sub.method} not found on #{sub.target_type} with [#{sub.target_id}]" unless target.respond_to? sub.method
+    target
   end
 
 
